@@ -6,18 +6,31 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
-app.use(express.json());
 
-// Add CORS middleware
+// CORS middleware - MUST be before express.json()
 app.use((req, res, next) => {
+  // Allow all origins
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  // Allow these HTTP methods
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  
+  // Allow these headers
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  // Allow credentials (if needed)
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // Handle preflight requests
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    return res.status(200).end();
   }
+  
   next();
 });
+
+// Body parser - MUST be after CORS
+app.use(express.json());
 
 // --- CONFIGURATION ---
 const apiKey = process.env.GEMINI_API_KEY;
