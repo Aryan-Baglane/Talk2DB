@@ -1,57 +1,97 @@
 function Sidebar() {
   const exampleQueries = [
+    // Vector Search examples
     {
-      text: "Find managers with CTC > 50 LPA",
-      query: "Find all managers with CTC greater than 50 LPA",
+      text: "Tell me about John Doe",
+      query: "Tell me about John Doe",
       type: "hybrid"
     },
     {
-      text: "Show me people in CO branch",
+      text: "Who works at Google?",
+      query: "Who works at Google?",
+      type: "hybrid"
+    },
+    // Database Query examples
+    {
+      text: "Find people with CTC > 50 LPA",
+      query: "Find all people with CTC greater than 50",
+      type: "hybrid"
+    },
+    {
+      text: "Show me CO branch people",
       query: "Show me people in CO branch",
       type: "hybrid"
     },
+    // Calculator examples
     {
-      text: "Tell me about Kangan Gupta",
-      query: "Tell me about Kangan Gupta",
+      text: "Calculate 123 + 456",
+      query: "What is 123 + 456?",
       type: "hybrid"
     },
     {
-      text: "Find tech branches with CGPA > 8",
-      query: "Find all tech branches with CGPA above 8",
+      text: "20% of 500",
+      query: "Calculate 20% of 500",
+      type: "hybrid"
+    },
+    // Aggregation examples
+    {
+      text: "Average CTC by branch",
+      query: "What is the average CTC by branch?",
       type: "hybrid"
     },
     {
-      text: "What is the average CTC?",
-      query: "What is the average CTC in the database?",
+      text: "Count people per company",
+      query: "How many people work at each company?",
       type: "hybrid"
     },
+    // Update examples
     {
-      text: "Update CTC for Kangan Gupta",
-      query: "Change the CTC for Kangan Gupta to 70",
+      text: "Update John's CTC to 70",
+      query: "Change the CTC for John Doe to 70",
       type: "update"
     },
     {
-      text: "Change branch for Vidit Tayal",
-      query: "Update Vidit Tayal's branch to IT",
+      text: "Change Jane's branch to IT",
+      query: "Update Jane Smith's branch to Information Technology",
       type: "update"
     }
   ];
 
-  const handleExampleClick = (query) => {
-    const event = new CustomEvent('exampleQuery', { detail: query });
+  const handleExampleClick = (example) => {
+    const event = new CustomEvent('exampleQuery', {
+      detail: { 
+        query: example.text,
+        mode: example.mode
+      }
+    });
     window.dispatchEvent(event);
   };
 
+  // Group examples by mode
+  const queryExamples = exampleQueries.filter(e => e.mode === 'query');
+  const updateExamples = exampleQueries.filter(e => e.mode === 'update');
+
   return (
     <div className="sidebar">
-      <h3>📝 Example Queries</h3>
-      {exampleQueries.map((item, index) => (
+      <h3>🔍 Query Examples</h3>
+      {queryExamples.map((example, index) => (
         <div
-          key={index}
+          key={`query-${index}`}
           className="example-query"
-          onClick={() => handleExampleClick(item)}
+          onClick={() => handleExampleClick(example)}
         >
-          {item.text}
+          {example.text}
+        </div>
+      ))}
+
+      <h3 style={{ marginTop: '30px' }}>✏️ Update Examples</h3>
+      {updateExamples.map((example, index) => (
+        <div
+          key={`update-${index}`}
+          className="example-query"
+          onClick={() => handleExampleClick(example)}
+        >
+          {example.text}
         </div>
       ))}
     </div>

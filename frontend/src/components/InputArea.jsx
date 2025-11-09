@@ -4,7 +4,20 @@ import config from '../config';
 
 function InputArea({ queryType, setQueryType, isLoading, setIsLoading, messages, setMessages }) {
   const [userInput, setUserInput] = useState('');
-  const [collection, setCollection] = useState('managers');
+  const [sessionId, setSessionId] = useState(null);
+  const [mode, setMode] = useState('query'); // 'query' or 'update'
+
+  // Generate session ID on mount
+  useEffect(() => {
+    const existingSession = localStorage.getItem('querychain_session_id');
+    if (existingSession) {
+      setSessionId(existingSession);
+    } else {
+      const newSession = `session_${Date.now()}`;
+      localStorage.setItem('querychain_session_id', newSession);
+      setSessionId(newSession);
+    }
+  }, []);
 
   useEffect(() => {
     const handleExampleQuery = (event) => {
@@ -17,59 +30,67 @@ function InputArea({ queryType, setQueryType, isLoading, setIsLoading, messages,
 
     window.addEventListener('exampleQuery', handleExampleQuery);
     return () => window.removeEventListener('exampleQuery', handleExampleQuery);
-  }, [collection]);
+  }, [sessionId]);
 
   const handleSend = async (query = userInput, type = queryType) => {
     const trimmedQuery = query.trim();
-    if (!trimmedQuery || isLoading) return;
+    if (!trimmedQuery || isLoading || !sessionId) return;
 
     // Add user message
     const userMessage = {
       id: Date.now(),
       type: 'user',
-      content: trimmedQuery
+      content: trimmedQuery,
+      mode: mode
     };
     setMessages(prev => [...prev, userMessage]);
     setUserInput('');
     setIsLoading(true);
 
     try {
-      const endpoint = type === 'hybrid' ? '/api/hybrid-query' : '/api/update-query';
-      const response = await axios.post(`${config.API_URL}${endpoint}`, {
-        userInput: trimmedQuery,
-        collectionName: collection
-      });
+      if (mode === 'update') {
+        // UPDATE MODE - Use dedicated update endpoint
+        const response = await axios.post(`${config.API_URL}/api/update`, {
+          userInput: trimmedQuery,
+          sessionId: sessionId
+        });
 
-      const result = response.data;
-      
-      // Create AI response message
-      const aiMessage = {
-        id: Date.now() + 1,
-        type: 'assistant'
-      };
-
-      if (type === 'hybrid') {
-        if (result.winner === 'rag') {
-          aiMessage.answer = result.answer;
-          aiMessage.context = result.context;
-          aiMessage.confidence = result.confidence;
+        if (response.data.success) {
+          const aiMessage = {
+            id: Date.now() + 1,
+            type: 'assistant',
+            answer: response.data.message || `✅ Update successful! ${response.data.modifiedCount} record(s) modified.`,
+            toolUsed: null,
+            toolResult: null,
+            confidence: 0.95,
+            modifiedCount: response.data.modifiedCount
+          };
+          setMessages(prev => [...prev, aiMessage]);
         } else {
-          aiMessage.data = result.data;
-          aiMessage.confidence = result.confidence;
-          aiMessage.mongoQuery = result.mongoQuery;
+          throw new Error(response.data.error || 'Update failed');
         }
       } else {
-        // Update query
-        if (result.modifiedCount > 0) {
-          aiMessage.success = true;
-          aiMessage.content = `Successfully updated ${result.modifiedCount} document(s)!`;
-          aiMessage.reEmbeddedCount = result.reEmbeddedCount;
-        } else {
-          aiMessage.error = 'No documents were modified. Please check your query.';
-        }
-      }
+        // QUERY MODE - Use agent endpoint
+        const response = await axios.post(`${config.API_URL}/api/agent`, {
+          userInput: trimmedQuery,
+          sessionId: sessionId,
+          userId: 'user_001'
+        });
 
-      setMessages(prev => [...prev, aiMessage]);
+        const result = response.data;
+        
+        // Create AI response message
+        const aiMessage = {
+          id: Date.now() + 1,
+          type: 'assistant',
+          answer: result.answer,
+          toolUsed: result.toolUsed,
+          toolResult: result.toolResult,
+          confidence: result.confidence
+        };
+
+        setMessages(prev => [...prev, aiMessage]);
+      }
     } catch (error) {
       const errorMessage = {
         id: Date.now() + 1,
@@ -88,36 +109,42 @@ function InputArea({ queryType, setQueryType, isLoading, setIsLoading, messages,
     }
   };
 
+  const clearSession = () => {
+    if (sessionId) {
+      axios.delete(`${config.API_URL}/api/agent/session/${sessionId}`)
+        .then(() => {
+          setMessages([]);
+          const newSession = `session_${Date.now()}`;
+          localStorage.setItem('querychain_session_id', newSession);
+          setSessionId(newSession);
+        })
+        .catch(err => console.error('Failed to clear session:', err));
+    }
+  };
+
   return (
     <div className="input-area">
+      {/* Mode Toggle */}
       <div className="query-type-toggle">
         <button
-          className={`toggle-btn ${queryType === 'hybrid' ? 'active' : ''}`}
-          onClick={() => setQueryType('hybrid')}
+          className={`toggle-btn ${mode === 'query' ? 'active' : ''}`}
+          onClick={() => setMode('query')}
+          type="button"
         >
-          🔍 Query
+          🔍 Query Mode
         </button>
         <button
-          className={`toggle-btn ${queryType === 'update' ? 'active' : ''}`}
-          onClick={() => setQueryType('update')}
+          className={`toggle-btn ${mode === 'update' ? 'active' : ''}`}
+          onClick={() => setMode('update')}
+          type="button"
         >
-          ✏️ Update
+          ✏️ Update Mode
         </button>
       </div>
+
       <div className="input-wrapper">
-        <div className="input-group">
-          <label htmlFor="collection">Collection</label>
-          <select
-            id="collection"
-            value={collection}
-            onChange={(e) => setCollection(e.target.value)}
-          >
-            <option value="managers">Managers</option>
-            <option value="employees">Employees</option>
-          </select>
-        </div>
-        <div className="input-group" style={{ flex: 3 }}>
-          <label htmlFor="userInput">Your Question</label>
+        <div className="input-group" style={{ flex: 1 }}>
+          <label htmlFor="userInput">Ask anything...</label>
           <input
             type="text"
             id="userInput"
@@ -125,11 +152,10 @@ function InputArea({ queryType, setQueryType, isLoading, setIsLoading, messages,
             onChange={(e) => setUserInput(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder={
-              queryType === 'hybrid'
-                ? 'e.g., Find all managers with CTC greater than 50 LPA'
-                : 'e.g., Change the CTC for Kangan Gupta to 70'
+              mode === 'query'
+                ? "e.g., Find people with CTC > 50"
+                : "e.g., Change CTC for John Doe to 70"
             }
-            autoComplete="off"
             disabled={isLoading}
           />
         </div>
@@ -139,7 +165,14 @@ function InputArea({ queryType, setQueryType, isLoading, setIsLoading, messages,
             onClick={() => handleSend()}
             disabled={isLoading}
           >
-            {isLoading ? <span className="loading"></span> : 'Send'}
+            {isLoading ? <span className="loading"></span> : mode === 'query' ? '🔍 Query' : '✏️ Update'}
+          </button>
+          <button
+            className="toggle-btn"
+            onClick={clearSession}
+            title="Clear conversation history"
+          >
+            🗑️ Clear
           </button>
         </div>
       </div>
